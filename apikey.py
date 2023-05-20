@@ -1,2 +1,2 @@
-apikey_huggingface = "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"
-apikey_openai = "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"
+apikey_huggingface = ""
+apikey_openai = ""
