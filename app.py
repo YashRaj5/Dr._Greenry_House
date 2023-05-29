@@ -129,7 +129,7 @@ def classify_disease_uploaded_file(upload_image):
 
 
 # Loading Saved Model
-saved_model_path = os.getcwd() + '\\model'
+saved_model_path = os.getcwd() + '/model'
 model = tf.keras.models.load_model(saved_model_path)
 
 # --------------------------------------LLM-Model-------------------------------------
