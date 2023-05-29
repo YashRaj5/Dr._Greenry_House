@@ -14,4 +14,3 @@ wikipedia
 opencv-python-headless
 huggingface_hub
 streamlit-authenticator
-py-bcrypt
