@@ -11,4 +11,4 @@ chromadb
 pypdf
 pycryptodome
 wikipedia
-opencv-python
+opencv-python-headless
