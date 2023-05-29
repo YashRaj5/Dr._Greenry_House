@@ -18,6 +18,7 @@ import random
 import cv2
 
 # LLM Model required libraries
+from langchain.llms import HuggingFaceHub
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 from langchain.chains import (
@@ -38,8 +39,11 @@ from langchain.agents.agent_toolkits import (
     VectorStoreInfo
 )
 # using OpenAI
-from llm_models import openai_llm
+# from llm_models import openai_llm
 
+# using huggingface
+os.environ['HUGGINGFACEHUB_API_TOKEN'] = "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"
+llm = HuggingFaceHub(repo_id="google/flan-t5-xxl", model_kwargs={"temperature":0.9})
 # -----------------------------------ML-Models----------------------------------
 
 # -----------------------------------Computer-Vision----------------------------
@@ -130,7 +134,7 @@ model = tf.keras.models.load_model(saved_model_path)
 
 # --------------------------------------LLM-Model-------------------------------------
 
-llm = openai_llm
+# llm = openai_llm
 
 # Create and load PDF Loader
 loader = PyPDFLoader('documentation.pdf')
