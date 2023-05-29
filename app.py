@@ -201,6 +201,7 @@ if choice =='About':
         response = agent_executor.run(prompt)
         # ...and write it out to the screen
         st.write(response)
+        st.balloons()
 
         # With a streamlit expander  
         with st.expander('Information from the report'):
