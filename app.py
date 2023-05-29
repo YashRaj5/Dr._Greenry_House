@@ -26,7 +26,17 @@ from langchain.chains import (
 )  # for allowing multiple sets of output
 from langchain.memory import ConversationBufferMemory
 from langchain.utilities import WikipediaAPIWrapper
+# Import PDF document loaders...there's other ones as well!
+from langchain.document_loaders import PyPDFLoader
+# Import chroma as the vector store 
+from langchain.vectorstores import Chroma
 
+# Import vector store stuff
+from langchain.agents.agent_toolkits import (
+    create_vectorstore_agent,
+    VectorStoreToolkit,
+    VectorStoreInfo
+)
 # using OpenAI
 from llm_models import openai_llm
 
@@ -102,11 +112,6 @@ def classify_disease_uploaded_file(upload_image):
     img = load_image(opencv_image)
     prediction = predict(img)
     disease_found = list(prediction.keys())[0].replace("_", " ")
-    img_location = (
-        "C:/Users/yraj/Work/POCs/Dr. Greenry House/output/success_{0}.jpg".format(
-            list(prediction.keys())[0]
-        )
-    )
 
     return (
         "PREDICTED Class: %s, Confidence: %f"
@@ -120,18 +125,40 @@ def classify_disease_uploaded_file(upload_image):
 
 
 # Loading Saved Model
-saved_model_path = "C:/Users/yraj/Work/POCs/Dr. Greenry House/model"
+saved_model_path = os.getcwd() + '\\model'
 model = tf.keras.models.load_model(saved_model_path)
 
 # --------------------------------------LLM-Model-------------------------------------
 
 llm = openai_llm
 
+# Create and load PDF Loader
+loader = PyPDFLoader('documentation.pdf')
+# Split pages from pdf 
+pages = loader.load_and_split()
+# Load documents into vector database aka ChromaDB
+store = Chroma.from_documents(pages, collection_name='project_info')
+
+# Create vectorstore info object - metadata repo?
+vectorstore_info = VectorStoreInfo(
+    name="project_info",
+    description="contains information about the whole project",
+    vectorstore=store
+)
+# Convert the document store into a langchain toolkit
+toolkit = VectorStoreToolkit(vectorstore_info=vectorstore_info)
+
+# Add the toolkit to an end-to-end LC
+agent_executor = create_vectorstore_agent(
+    llm=llm,
+    toolkit=toolkit,
+    verbose=True
+)
 
 def image_upload_response(disease_found):
     cure_template = PromptTemplate(
-        input_variables=["disease_found"],
-        template="tell me about disease {disease_found} in breif, and provide a step-by-step possible treatment for it.",
+        input_variables=["disease_found", "wikipedia_research"],
+        template="tell me about disease {disease_found} in breif, and provide a step-by-step possible treatment for it. while leveraging this wikipedia reserch:{wikipedia_research}",
     )
     # Memory
     cure_memory = ConversationBufferMemory(
@@ -150,7 +177,7 @@ def image_upload_response(disease_found):
 
     wiki_research = wiki.run(disease_found)
 
-    return cure_chain.run(disease_found)
+    return cure_chain.run(disease_found=disease_found, wikipedia_research=wiki_research)
 
 
 # -------------------------------------STREAMLIT-APP-----------------------------------
@@ -159,87 +186,118 @@ st.set_page_config(page_title="Plant Care Assistant")
 # Hide warnings
 st.set_option("deprecation.showfileUploaderEncoding", False)
 
-APP_ICON_URL = "https://i.pinimg.com/736x/4e/af/08/4eaf081c599286fd9ca84c1757c07152.jpg"
-st.write(
-    "<style>[data-testid='stMetricLabel'] {min-height: 0.5rem !important}</style>",
-    unsafe_allow_html=True,
-)
-st.image(APP_ICON_URL, width=80)
 
-# Sidebar for App Overview
-with st.sidebar:
-    st.title("Plant Disease Detection App with Assistant🤖")
-    st.markdown(
-        """
-    ## About
-    This app is an LLM-powered Assistant built using:
-    - [Streamlit](https://streamlit.io/)
-    - [OpenAI](https://openai.com/)
-    - And Much More to be added
-    """
-    )
-    add_vertical_space(5)
+activities = ["Plant Disease Assistant", "About"]
+choice = st.sidebar.selectbox("Select Activty",activities)
+
+    
+if choice =='About':
+    st.title("Ask about the project here. 🧐")
+    prompt = st.text_input(label='Input your prompt here', value="Introduction for Plant disease detection system" )
+
+    # If the user hits enter
+    if prompt:
+        # Then pass the prompt to the LLM
+        response = agent_executor.run(prompt)
+        # ...and write it out to the screen
+        st.write(response)
+
+        # With a streamlit expander  
+        with st.expander('Information from the report'):
+            # Find the relevant pages
+            search = store.similarity_search_with_score(prompt) 
+            # Write out the first 
+            st.write(search[0][0].page_content) 
+if choice == 'Plant Disease Assistant':
+
+    APP_ICON_URL = "https://i.pinimg.com/736x/4e/af/08/4eaf081c599286fd9ca84c1757c07152.jpg"
     st.write(
-        "Made with ❤️ by [Yash Raj](https://in.linkedin.com/in/yash-raj-2841641b3)"
+        "<style>[data-testid='stMetricLabel'] {min-height: 0.5rem !important}</style>",
+        unsafe_allow_html=True,
+    )
+    st.image(APP_ICON_URL, width=80)
+    # Sidebar for App Overview
+    with st.sidebar:
+        st.title("Plant Disease Detection App with Assistant🤖")
+        st.markdown(
+            """
+        ## About
+        This app is an LLM-powered Assistant built using:
+        - [Streamlit](https://streamlit.io/)
+        - [OpenAI](https://openai.com/)
+        - And Much More to be added
+        """
+        )
+        add_vertical_space(5)
+        st.write(
+            "Made with ❤️ by [Yash Raj](https://in.linkedin.com/in/yash-raj-2841641b3)"
+        )
+
+    # Set App title
+    st.title("Dr. Greenry House🥸")
+
+    # For uploading Image
+    st.write("**Upload your Image**")
+    upload_image = st.file_uploader(
+        "Upload image of plant in JPG or PNG format", type=["jpg", "png"]
     )
 
-# Set App title
-st.title("Dr. Greenry House🥸")
+    # Generate empty lists for generated and past.
+    ## generated stores AI generated responses
+    if "generated" not in st.session_state:
+        st.session_state["generated"] = [
+            "Hello, I am Dr. Greenry, Please show me the image of the infected plant!"
+        ]
+    # past stores User's questions
+    if "past" not in st.session_state:
+        st.session_state["past"] = ["Hello"]
 
-# For uploading Image
-st.write("**Upload your Image**")
-upload_image = st.file_uploader(
-    "Upload image of plant in JPG or PNG format", type=["jpg", "png"]
-)
-
-# Generate empty lists for generated and past.
-## generated stores AI generated responses
-if "generated" not in st.session_state:
-    st.session_state["generated"] = [
-        "Hello, I am Dr. Greenry, Please upload the image of the infected plant!"
-    ]
-## past stores User's questions
-# if "past" not in st.session_state:
-#     st.session_state["past"] = ["Hello"]
-
-# Layout of input/response containers
-input_container = st.container()
-colored_header(label="", description="", color_name="blue-30")
-response_container = st.container()
+    # Layout of input/response containers
+    input_container = st.container()
+    colored_header(label="", description="", color_name="blue-30")
+    response_container = st.container()
 
 
-# User input
-## Function for taking user provided prompt as input
-def get_text():
-    input_text = st.text_input("You: ", "", key="input")
-    return input_text
+    # User input
+    ## Function for taking user provided prompt as input
+    def get_text():
+        input_text = st.text_input("You: ", "", key="input")
+        return input_text
 
 
-## Applying the user input box
-with input_container:
-    user_input = get_text()
+    ## Applying the user input box
+    with input_container:
+        user_input = get_text()
 
 
-# Response output
-## Function for taking user prompt as input followed by producing AI generated responses
-def user_input_response(prompt):
-    response = llm.run(prompt)
-    return response
+    # Response output
+    ## Function for taking user prompt as input followed by producing AI generated responses
+    def user_input_response(prompt):
+        response = llm(prompt)
+        return response
 
 
-## Conditional display of AI generated responses as a function of user provided prompts
-with response_container:
-    if st.session_state["generated"]:
-        if upload_image is not None:
-            # Performing Inference on the Image
-            result_print, disease_found, img = classify_disease_uploaded_file(
-                upload_image
-            )
-            st.markdown(result_print, unsafe_allow_html=True)
-            st.image(img, channels="BGR")
-            output = image_upload_response(disease_found)
-            st.session_state.generated.append(output)
-            message(st.session_state["generated"][-1], key=str(-1))
+    ## Conditional display of AI generated responses as a function of user provided prompts
+    with response_container:
+        if st.session_state["generated"]:
+            if upload_image is not None:
+                # Performing Inference on the Image
+                result_print, disease_found, img = classify_disease_uploaded_file(
+                    upload_image
+                )
+                st.markdown(result_print, unsafe_allow_html=True)
+                st.image(img, channels="BGR")
+                output = image_upload_response(disease_found)
+                image_user_input = "Can you please provide me with the cure for the {0} disease".format(disease_found.replace('_', ' '))
+                st.session_state.past.append(image_user_input)
+                st.session_state.generated.append(output)
+                # message(st.session_state["generated"][-1], key=str(-1))
+                # del upload_image
+            elif user_input:
+                response = user_input_response(user_input)
+                st.session_state.past.append(user_input)
+                st.session_state.generated.append(response)
+            for i in range(len(st.session_state['generated'])):
+                message(st.session_state['past'][i], is_user=True, key=str(i) + '_user')
+                message(st.session_state["generated"][i], key=str(i))
             del upload_image
-        else:
-            message(st.session_state["generated"][0], key=str(0))
