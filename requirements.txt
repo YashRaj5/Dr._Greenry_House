@@ -7,7 +7,7 @@ matplotlib==3.6.3
 openai==0.27.6
 langchain==0.0.165
 tiktoken
-chromadb
+chromadb==0.3.23
 pypdf
 pycryptodome
 wikipedia
